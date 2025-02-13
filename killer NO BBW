@@ -1,0 +1,80 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © fayac99
+
+//@version=6
+strategy("NO BBW fay 99 killer Bollinger Band Strategy (RSI Update)", overlay=true)
+
+// Inputs
+bbLength = input.int(30, title="Bollinger Band Length")
+bbMultiplier = input.float(2.0, title="Bollinger Band Multiplier")
+rsiPeriod = input.int(14, title="RSI Period")
+atrPeriod = input.int(14, title="ATR Period")
+tpMultiplier = input.float(1.2, title="Take Profit Multiplier")
+slMultiplier = input.float(1.6, title="Stop Loss Multiplier")
+maxBars = input.int(2, title="Max Trade Length (Bars)")
+riskAmount = input.float(200, title="Amount to Risk per Trade ($)")  // Risk per trade ($200)
+
+// Calculate Bollinger Bands
+basis = ta.sma(close, bbLength)
+upperBand = basis + (bbMultiplier * ta.stdev(close, bbLength))
+lowerBand = basis - (bbMultiplier * ta.stdev(close, bbLength))
+
+// RSI
+rsi = ta.rsi(close, rsiPeriod)
+
+// ATR
+atrValue = ta.atr(atrPeriod)
+
+// ATR Bands Calculation
+upperATRBand = close + (tpMultiplier * atrValue)
+lowerATRBand = close - (slMultiplier * atrValue)
+
+// Identify Entry Conditions (BBW threshold removed)
+isBearish = close < open
+isBullish = close > open
+bearishCandle = isBearish and close < lowerBand and rsi[1] < 25 // RSI condition applies to the previous bearish candle
+bullishCandle = isBullish and (high - low) > (high[1] - low[1]) // Bullish candle is larger than the bearish one
+longSignal = bearishCandle[1] and bullishCandle
+
+// Initialize Entry Price variable
+var float entryPrice = na
+var float stopLossPrice = na
+var float takeProfitPrice = na
+
+if (longSignal)
+    entryPrice := close
+    stopLossPrice := entryPrice - (slMultiplier * atrValue)
+    takeProfitPrice := entryPrice + (tpMultiplier * atrValue)
+
+    // Calculate Position Size based on stop loss distance
+    stopLossDistance = entryPrice - stopLossPrice // Calculate the distance from entry to stop loss
+    positionSize = riskAmount / stopLossDistance  // Position size is the amount to risk divided by stop loss distance
+
+    // Enter Long Position with position size calculated
+    strategy.entry("Long", strategy.long, qty=positionSize)
+    strategy.exit("TP/SL", from_entry="Long", limit=takeProfitPrice, stop=stopLossPrice)
+
+// Max Trade Length Handling
+if (strategy.position_size > 0)
+    barsSinceEntry = bar_index - strategy.opentrades.entry_bar_index(strategy.opentrades - 1)
+    if barsSinceEntry >= maxBars
+        strategy.close("Long", comment="Max Trade Length Reached")
+
+// Plot Entry, SL, and TP Levels
+plot(strategy.position_size > 0 ? takeProfitPrice : na, color=color.blue, title="Take Profit")
+plot(strategy.position_size > 0 ? stopLossPrice : na, color=color.red, title="Stop Loss")
+plot(longSignal ? close : na, color=color.green, style=plot.style_cross, title="Entry Signal")
+
+// Plot Bollinger Bands
+plot(upperBand, color=color.orange, title="Bollinger Upper")
+plot(basis, color=color.gray, title="Bollinger Middle")
+plot(lowerBand, color=color.orange, title="Bollinger Lower")
+
+// Plot RSI
+hline(70, "Overbought", color=color.red)
+hline(30, "Oversold", color=color.green)
+plot(rsi, color=color.blue, title="RSI")
+
+// Plot ATR Bands on the price chart
+plot(upperATRBand, color=color.green, title="Take Profit Level", linewidth=2, style=plot.style_line)
+plot(lowerATRBand, color=color.red, title="Stop Loss Level", linewidth=2, style=plot.style_line)
